@@ -1,10 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Aferz\CustomFixers;
 
-use PhpCsFixer\AbstractFixer;
 use PhpCsFixer\Fixer\ConfigurableFixerInterface;
-use PhpCsFixer\Fixer\FixerInterface;
 use PhpCsFixer\FixerConfiguration\FixerConfigurationResolver;
 use PhpCsFixer\FixerConfiguration\FixerConfigurationResolverInterface;
 use PhpCsFixer\FixerConfiguration\FixerOptionBuilder;
@@ -108,6 +106,13 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
 
         foreach ($tokens as $index => $token) {
             if ($token->isGivenKind(T_OPEN_TAG) && $containsNamespace === false) {
+                // Skip declare (if any)
+                if ($tokens->isTokenKindFound(T_DECLARE)) {
+                    while (! $tokens[$index]->equals(';')) {
+                        $index++;
+                    }
+                }
+
                 $tokens->insertAt(
                     $index + 2,
                     $this->createCorrectNamespaceTokens($fixedNamespace, true)
@@ -146,7 +151,11 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
 
                 $relativeNamespace = str_replace('/', '\\', trim(dirname($relativePath), '/'));
 
-                return rtrim($namespace, '\\') . '\\' . trim($relativeNamespace, '\\');
+                if ($relativeNamespace === '.') {
+                    return rtrim($namespace, '\\');
+                }
+
+                return rtrim($namespace, '\\').'\\'.trim($relativeNamespace, '\\');
             }
         }
 
