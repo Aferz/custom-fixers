@@ -109,7 +109,7 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
 
     public function supports(\SplFileInfo $file): bool
     {
-        return preg_match('/^[A-Z][a-zA-Z]*\.php$/', $file->getFilename()) !== false;
+        return true;
     }
 
     public function fix(\SplFileInfo $file, Tokens $tokens): void
@@ -171,6 +171,11 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
 
     private function isExcludedPath(SplFileInfo $file): bool
     {
+        // Files not following PSR4 convetions are automatically excluded.
+        if (! preg_match('/^[A-Z][a-zA-Z]*\.php$/', $file->getFilename())) {
+            return true;
+        }
+
         foreach ($this->excludePaths as $excludePath) {
             if (str_starts_with($excludePath, '*')) {
                 if (fnmatch($excludePath, $file->getRealPath())) {
