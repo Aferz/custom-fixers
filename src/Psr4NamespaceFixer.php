@@ -22,11 +22,22 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
      */
     private array $psr4Autoloads;
 
+    /**
+     * @var array<string>
+     */
+    private array $excludePaths = [
+        '**/*.blade.php',
+        '**/*.twig.php',
+    ];
+
     public function getConfigurationDefinition(): FixerConfigurationResolverInterface
     {
         return new FixerConfigurationResolver([
             (new FixerOptionBuilder('project_base_path', 'The project base path.'))
                 ->setAllowedTypes(['string'])
+                ->getOption(),
+            (new FixerOptionBuilder('exclude_paths', 'The list of paths that should be excluded and the namespace should be removed.'))
+                ->setAllowedTypes(['string[]'])
                 ->getOption(),
             (new FixerOptionBuilder('composer_path', 'The location of your "composer.json" file.'))
                 ->setAllowedTypes(['string'])
@@ -53,6 +64,11 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
         $this->psr4Autoloads = array_merge(
             ($composerContents['autoload']['psr-4'] ?? []),
             ($composerContents['autoload-dev']['psr-4'] ?? [])
+        );
+
+        $this->excludePaths = array_merge(
+            ($configuration['exclude_paths'] ?? []),
+            $this->excludePaths
         );
     }
 
@@ -105,7 +121,13 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
         $containsNamespace = $tokens->isTokenKindFound(T_NAMESPACE);
 
         foreach ($tokens as $index => $token) {
-            if ($token->isGivenKind(T_OPEN_TAG) && $containsNamespace === false) {
+            // Add namespace if it does not exist.
+
+            if ($containsNamespace === false && $token->isGivenKind(T_OPEN_TAG)) {
+                if ($this->isExcludedPath($file)) {
+                    break;
+                }
+
                 // Skip declare (if any)
                 if ($tokens->isTokenKindFound(T_DECLARE)) {
                     while (! $tokens[$index]->equals(';')) {
@@ -121,7 +143,15 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
                 break;
             }
 
+            // Modify namespace if it exists.
+
             if ($token->isGivenKind(T_NAMESPACE)) {
+                if ($this->isExcludedPath($file)) {
+                    $this->removeCurrentNamespace($tokens, $index);
+
+                    break;
+                }
+
                 $namespaceStartsAtIndex = $index + 2;
                 $currentNamespace = $this->getCurrentNamespace($tokens, $namespaceStartsAtIndex);
 
@@ -137,6 +167,29 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
                 break;
             }
         }
+    }
+
+    private function isExcludedPath(SplFileInfo $file): bool
+    {
+        foreach ($this->excludePaths as $excludePath) {
+            if (str_starts_with($excludePath, '*')) {
+                if (fnmatch($excludePath, $file->getRealPath())) {
+                    return true;
+                }
+            } elseif (str_starts_with($excludePath, '/')) {
+                if ($excludePath === $file->getRealPath()) {
+                    return true;
+                }
+            } else {
+                $excludePath = $this->projectBasePath.DIRECTORY_SEPARATOR.$excludePath;
+
+                if (fnmatch($excludePath, $file->getRealPath())) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function resolveCorrectNamespace(SplFileInfo $file): ?string
@@ -179,6 +232,20 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
         while ($tokens[$namespaceStartsAtIndex]->isGivenKind([T_STRING, T_NS_SEPARATOR])) {
             $tokens->clearAt($namespaceStartsAtIndex);
             $namespaceStartsAtIndex++;
+        }
+    }
+
+    private function removeCurrentNamespace(Tokens $tokens, int $namespaceStartsAtIndex): void
+    {
+        while (true) {
+            $token = $tokens[$namespaceStartsAtIndex];
+
+            $tokens->clearAt($namespaceStartsAtIndex);
+            $namespaceStartsAtIndex++;
+
+            if ($token->getContent() === ';') {
+                break;
+            }
         }
     }
 
