@@ -109,7 +109,7 @@ final class Psr4NamespaceFixer implements ConfigurableFixerInterface
 
     public function supports(\SplFileInfo $file): bool
     {
-        return true;
+        return preg_match('/^[A-Z][a-zA-Z]*\.php$/', $file->getFilename()) !== false;
     }
 
     public function fix(\SplFileInfo $file, Tokens $tokens): void
